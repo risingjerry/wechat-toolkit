@@ -1,0 +1,6 @@
+interface:
+  display_name: "WeChat Chat Export"
+  short_description: "Export local WeChat chats to Markdown/JSONL"
+  default_prompt: "Use $wechat-chat-analysis to initialize a local project and guide me through exporting selected WeChat chats."
+policy:
+  allow_implicit_invocation: true

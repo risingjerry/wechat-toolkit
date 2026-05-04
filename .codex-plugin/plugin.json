@@ -1,0 +1,44 @@
+{
+  "name": "wechat-toolkit",
+  "version": "0.2.0",
+  "description": "A local macOS WeChat toolkit for chat export and analysis plus wechat-multifix powered multi-open workflows.",
+  "author": {
+    "name": "dontbesilent",
+    "email": "",
+    "url": "https://github.com/JNHFlow21"
+  },
+  "homepage": "https://github.com/JNHFlow21/wechat-toolkit",
+  "repository": "https://github.com/JNHFlow21/wechat-toolkit",
+  "license": "Proprietary",
+  "keywords": [
+    "wechat",
+    "chat-export",
+    "multi-open",
+    "local-analysis"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "微信工具箱",
+    "shortDescription": "本地导出微信聊天记录，并支持微信一键多开。",
+    "longDescription": "微信工具箱面向课程学员和小白用户。用户只需要用自然语言说想完成的事，例如初始化工具箱、更新备份数据库、导出某个联系人或群聊、生成 AI 分析文件、安装或修复微信多开。Agent 负责在后台调用本地脚本完成检查、同步、解密、导出和验证。聊天导出复用内置的 wechat-chat-analysis，多开能力复用内置的 wechat-multifix skill。所有聊天数据、解密数据库和 key store 默认只保存在用户本机。",
+    "developerName": "dontbesilent",
+    "category": "Productivity",
+    "capabilities": [
+      "Local Automation",
+      "WeChat Chat Export",
+      "WeChat Multi-open"
+    ],
+    "websiteURL": "https://github.com/JNHFlow21/wechat-toolkit",
+    "privacyPolicyURL": "",
+    "termsOfServiceURL": "",
+    "defaultPrompt": [
+      "$wechat-toolkit 初始化微信工具箱",
+      "$wechat-toolkit 更新一下 WeChat 2 的备份数据库",
+      "$wechat-toolkit 修复微信多开"
+    ],
+    "brandColor": "#16A34A",
+    "composerIcon": "",
+    "logo": "",
+    "screenshots": []
+  }
+}
