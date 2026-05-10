@@ -26,12 +26,22 @@ $wechat-toolkit 初始化微信工具箱
 - 安装微信工具箱 plugin
 - 配置 Codex 本地 marketplace
 - 启用 `$wechat-toolkit`
-- 安装每日自动更新任务
+- 安装每日凌晨 4 点自动更新任务
 - 安装 `wechat-toolkit-update` 更新命令
 
 ## 更新
 
-默认每天自动检查更新一次。
+默认安装后会创建一个 macOS LaunchAgent：
+
+```text
+~/Library/LaunchAgents/com.dontbesilent.wechat-toolkit-updater.plist
+```
+
+它会在每天本地时间凌晨 4 点运行一次 `wechat-toolkit-update --quiet`：
+
+- 有新版本：自动拉取 GitHub 最新版本并同步到 Codex 本地 marketplace。
+- 没有新版本：安静退出，不影响使用。
+- 更新日志：写入 `~/.codex/marketplaces/wechat-local-toolkit/update.log`。
 
 手动更新：
 
@@ -45,11 +55,37 @@ wechat-toolkit-update
 python3 ~/.codex/marketplaces/wechat-local-toolkit/plugins/wechat-toolkit/scripts/self_update.py status
 ```
 
+重新安装或修复自动更新任务：
+
+```bash
+python3 ~/.codex/marketplaces/wechat-local-toolkit/plugins/wechat-toolkit/scripts/self_update.py install-launchagent
+```
+
 关闭自动更新：
 
 ```bash
 python3 ~/.codex/marketplaces/wechat-local-toolkit/plugins/wechat-toolkit/scripts/self_update.py uninstall-launchagent
 ```
+
+## Release 和更新记录
+
+每次功能更新都会按项目 release 的方式记录：
+
+- `CHANGELOG.md`：维护每个版本的改动摘要。
+- GitHub Releases：发布带版本号的 release，方便查看本次更新改了什么。
+- `.codex-plugin/plugin.json`：同步提升插件版本号。
+
+查看更新内容：
+
+- [CHANGELOG.md](CHANGELOG.md)
+- [GitHub Releases](https://github.com/JNHFlow21/wechat-toolkit/releases)
+
+发布规则：
+
+1. 功能或行为变化时提升版本号，例如 `0.2.2`。
+2. 在 `CHANGELOG.md` 顶部新增本次更新摘要。
+3. 推送到 GitHub `main` 后，创建对应 tag 和 GitHub Release。
+4. 已安装用户的每日 04:00 自动更新任务会在下一次检查时拉取新版本。
 
 ## 功能 1：微信聊天导出与分析
 

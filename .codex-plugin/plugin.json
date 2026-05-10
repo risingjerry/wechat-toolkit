@@ -1,6 +1,6 @@
 {
   "name": "wechat-toolkit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A local macOS WeChat toolkit for account-scoped chat export, multi-shard analysis, radar/health summaries, and wechat-multifix powered multi-open workflows.",
   "author": {
     "name": "dontbesilent",

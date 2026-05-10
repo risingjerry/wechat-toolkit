@@ -20,6 +20,8 @@ DEFAULT_REPO_URL = "https://github.com/JNHFlow21/wechat-toolkit.git"
 DEFAULT_BRANCH = "main"
 INSTALL_STATE = ".wechat-toolkit-install.json"
 LAUNCH_AGENT_LABEL = "com.dontbesilent.wechat-toolkit-updater"
+AUTO_UPDATE_HOUR = 4
+AUTO_UPDATE_MINUTE = 0
 
 
 def run(args: list[str], cwd: Path | None = None, quiet: bool = False) -> str:
@@ -206,7 +208,7 @@ def install_launch_agent(marketplace_root: Path, quiet: bool = False) -> None:
     payload = {
         "Label": LAUNCH_AGENT_LABEL,
         "ProgramArguments": [sys.executable, str(updater), "update", "--quiet"],
-        "StartInterval": 86400,
+        "StartCalendarInterval": {"Hour": AUTO_UPDATE_HOUR, "Minute": AUTO_UPDATE_MINUTE},
         "RunAtLoad": False,
         "StandardOutPath": str(marketplace_root / "update.log"),
         "StandardErrorPath": str(marketplace_root / "update.log"),
@@ -284,6 +286,7 @@ def status(_args: argparse.Namespace) -> None:
                 "remote": remote,
                 "launch_agent": str(launch_agent_path()),
                 "auto_update_installed": launch_agent_path().exists(),
+                "auto_update_schedule": f"daily {AUTO_UPDATE_HOUR:02d}:{AUTO_UPDATE_MINUTE:02d} local time",
             },
             ensure_ascii=False,
             indent=2,
