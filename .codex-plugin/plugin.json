@@ -1,7 +1,7 @@
 {
   "name": "wechat-toolkit",
-  "version": "0.2.0",
-  "description": "A local macOS WeChat toolkit for chat export and analysis plus wechat-multifix powered multi-open workflows.",
+  "version": "0.2.1",
+  "description": "A local macOS WeChat toolkit for account-scoped chat export, multi-shard analysis, radar/health summaries, and wechat-multifix powered multi-open workflows.",
   "author": {
     "name": "dontbesilent",
     "email": "",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "微信工具箱",
     "shortDescription": "本地导出微信聊天记录，并支持微信一键多开。",
-    "longDescription": "微信工具箱面向课程学员和小白用户。用户只需要用自然语言说想完成的事，例如初始化工具箱、更新备份数据库、导出某个联系人或群聊、生成 AI 分析文件、安装或修复微信多开。Agent 负责在后台调用本地脚本完成检查、同步、解密、导出和验证。聊天导出复用内置的 wechat-chat-analysis，多开能力复用内置的 wechat-multifix skill。所有聊天数据、解密数据库和 key store 默认只保存在用户本机。",
+    "longDescription": "微信工具箱面向课程学员和小白用户。用户只需要用自然语言说想完成的事，例如初始化工具箱、更新备份数据库、按账号隔离导出某个联系人或群聊、生成 AI 分析文件、生成商机雷达/同步健康摘要、安装或修复微信多开。Agent 负责在后台调用本地脚本完成检查、同步、解密、导出和验证。聊天导出复用内置的 wechat-chat-analysis，多开能力复用内置的 wechat-multifix skill。所有聊天数据、解密数据库和 key store 默认只保存在用户本机。",
     "developerName": "dontbesilent",
     "category": "Productivity",
     "capabilities": [

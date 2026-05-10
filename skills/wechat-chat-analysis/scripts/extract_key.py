@@ -150,6 +150,7 @@ def main():
     parser = argparse.ArgumentParser(description="Extract WeChat SQLCipher keys via frida")
     parser.add_argument("--wechat-app")
     parser.add_argument("--bundle-id", help="Launch the WeChat app with this CFBundleIdentifier")
+    parser.add_argument("--pid", type=int, help="Attach to an explicit process id in attach mode")
     parser.add_argument("--out", default=str(DEFAULT_KEYS_LOG))
     parser.add_argument("--wait", type=int, default=300)
     parser.add_argument("--min-usable-keys", type=int, default=2, help="Stop early after this many SQLCipher-style keys are captured")
@@ -181,6 +182,9 @@ def main():
             sys.exit(f"[!] WeChat binary not found: {bin_path}")
         print(f"[*] Spawning {bin_path}", flush=True)
         pid = device.spawn([bin_path])
+    elif args.pid:
+        pid = args.pid
+        print(f"[*] Attach mode. Using PID={pid}", flush=True)
     else:
         print("[*] Attach mode. Launch WeChat now:", flush=True)
         print(f"    {bin_path}", flush=True)

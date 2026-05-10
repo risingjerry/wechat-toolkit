@@ -4,7 +4,7 @@ import json
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 
 def decode_text(value):
@@ -71,13 +71,16 @@ def classify_target(user_name: str) -> str:
     return "contact"
 
 
-def list_targets(message_db: Path, contact_db: Optional[Path]) -> List[dict]:
+def list_targets(message_db: Path, contact_db: Optional[Path], message_dbs: Optional[Sequence[Path]] = None) -> List[dict]:
+    db_paths = [Path(path) for path in (message_dbs or [message_db])]
     contacts = load_contacts(contact_db) if contact_db else {}
-    conn = sqlite3.connect(str(message_db))
-    conn.row_factory = sqlite3.Row
 
     sessions = {}
-    try:
+    for db_path in db_paths:
+        if not db_path.exists():
+            continue
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
         for row in conn.execute("SELECT rowid, user_name, is_session FROM Name2Id ORDER BY user_name"):
             user_name = decode_text(row["user_name"])
             target_hash = hashlib.md5(user_name.encode()).hexdigest()
@@ -90,15 +93,23 @@ def list_targets(message_db: Path, contact_db: Optional[Path]) -> List[dict]:
                 continue
             count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
             last_ts = conn.execute(f"SELECT MAX(create_time) FROM {table_name}").fetchone()[0]
-            sessions[user_name] = {
-                "target_id": user_name,
-                "target_name": display_name(user_name, contacts),
-                "target_type": classify_target(user_name),
-                "is_session": row["is_session"],
-                "message_count": count,
-                "last_timestamp": last_ts,
-            }
-    finally:
+            existing = sessions.setdefault(
+                user_name,
+                {
+                    "target_id": user_name,
+                    "target_name": display_name(user_name, contacts),
+                    "target_type": classify_target(user_name),
+                    "is_session": row["is_session"],
+                    "message_count": 0,
+                    "last_timestamp": None,
+                    "source_shards": [],
+                },
+            )
+            existing["message_count"] += count
+            if last_ts and (not existing["last_timestamp"] or last_ts > existing["last_timestamp"]):
+                existing["last_timestamp"] = last_ts
+            existing["is_session"] = max(existing.get("is_session") or 0, row["is_session"] or 0)
+            existing["source_shards"].append(str(db_path))
         conn.close()
 
     if "filehelper" not in sessions:
@@ -119,6 +130,7 @@ def list_targets(message_db: Path, contact_db: Optional[Path]) -> List[dict]:
 def main():
     parser = argparse.ArgumentParser(description="List WeChat chat targets by readable name")
     parser.add_argument("--message-db", required=True)
+    parser.add_argument("--message-db-extra", action="append", dest="message_db_extra", help="Additional decrypted message shard")
     parser.add_argument("--contact-db")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--target-type", choices=["contact", "group", "filehelper"])
@@ -129,7 +141,8 @@ def main():
         sys.exit(f"[!] message db not found: {message_db}")
 
     contact_db = Path(args.contact_db).expanduser() if args.contact_db else None
-    targets = list_targets(message_db, contact_db)
+    message_dbs = [message_db] + [Path(path).expanduser() for path in (args.message_db_extra or [])]
+    targets = list_targets(message_db, contact_db, message_dbs=message_dbs)
     if args.target_type:
         targets = [target for target in targets if target["target_type"] == args.target_type]
 

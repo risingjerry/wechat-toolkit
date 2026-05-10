@@ -1,5 +1,6 @@
 import json
 import re
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
@@ -22,6 +23,11 @@ def save_key_store(path: Path, keys: Dict[str, dict]) -> None:
         "keys": keys,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        os.chmod(path.parent, 0o700)
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def import_keys_log(keys_log: Path, key_store_path: Path) -> Dict[str, dict]:

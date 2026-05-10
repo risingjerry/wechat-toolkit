@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 try:
     import zstandard as zstd
@@ -374,6 +374,158 @@ def rewrite_day_markdown(month_dir: Path, day_key: str, target_name: str, record
     (month_dir / f"{day_key}.md").write_text("\n".join(lines), encoding="utf-8")
 
 
+def normalize_message_dbs(db_path: Path, message_dbs: Optional[Sequence[Path]] = None) -> List[Path]:
+    paths = [Path(path).expanduser() for path in (message_dbs or [db_path])]
+    if db_path not in paths:
+        paths.insert(0, db_path.expanduser())
+    unique = []
+    seen = set()
+    for path in paths:
+        resolved = str(path)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(path)
+    return unique
+
+
+def source_db_key(db_path: Path) -> str:
+    parts = db_path.parts
+    if "message" in parts:
+        index = len(parts) - 1 - list(reversed(parts)).index("message")
+        return "/".join(parts[index:])
+    return db_path.name
+
+
+def open_message_connections(db_paths: Sequence[Path]) -> List[Tuple[str, Path, sqlite3.Connection]]:
+    connections = []
+    for path in db_paths:
+        if not path.exists():
+            continue
+        conn = sqlite3.connect(str(path))
+        conn.row_factory = sqlite3.Row
+        conn.text_factory = bytes
+        connections.append((source_db_key(path), path, conn))
+    return connections
+
+
+def collect_user_names(connections: Sequence[Tuple[str, Path, sqlite3.Connection]]) -> List[str]:
+    names = set()
+    for _, _, conn in connections:
+        try:
+            for row in conn.execute("SELECT user_name FROM Name2Id ORDER BY user_name"):
+                user_name = decode_text_value(row["user_name"])
+                if user_name:
+                    names.add(user_name)
+        except sqlite3.Error:
+            continue
+    return sorted(names)
+
+
+def resolve_target_across(
+    connections: Sequence[Tuple[str, Path, sqlite3.Connection]],
+    contacts: Dict[str, dict],
+    target: Optional[str],
+    target_name: Optional[str],
+):
+    user_names = collect_user_names(connections)
+    if target:
+        if target in user_names or target == "filehelper":
+            return target, display_name(target, contacts)
+        sys.exit(f"[!] Target not found: {target}")
+
+    if not target_name:
+        sys.exit("[!] Provide either --target or --target-name")
+
+    normalized = target_name.strip().lower()
+    exact_matches = []
+    partial_matches = []
+    for user_name in user_names:
+        shown = display_name(user_name, contacts)
+        user_name_lower = user_name.lower()
+        shown_lower = shown.lower()
+        if shown_lower == normalized or user_name_lower == normalized:
+            exact_matches.append((user_name, shown))
+        elif normalized in shown_lower or normalized in user_name_lower:
+            partial_matches.append((user_name, shown))
+
+    matches = exact_matches or partial_matches
+    if not matches:
+        sys.exit(f"[!] No chat target matched name: {target_name}")
+    if len(matches) > 1:
+        joined = ", ".join(f"{shown} ({user_name})" for user_name, shown in matches)
+        sys.exit(f"[!] Multiple matches for '{target_name}': {joined}. Use --target.")
+    return matches[0]
+
+
+def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return bool(
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+    )
+
+
+def load_sender_lookup(conn: sqlite3.Connection) -> Dict[int, str]:
+    sender_lookup = {}
+    for row in conn.execute("SELECT rowid, user_name FROM Name2Id"):
+        sender_lookup[row["rowid"]] = decode_text_value(row["user_name"])
+    return sender_lookup
+
+
+def query_message_rows(conn: sqlite3.Connection, table_name: str, last_local_id: Optional[int]) -> List[sqlite3.Row]:
+    query = (
+        f"SELECT local_id, server_id, local_type, create_time, real_sender_id, status, source, "
+        f"CAST(message_content AS BLOB) AS message_content FROM {table_name} "
+    )
+    params = []
+    if last_local_id is not None:
+        query += "WHERE local_id > ? "
+        params.append(last_local_id)
+    query += "ORDER BY create_time ASC, local_id ASC"
+    return conn.execute(query, params).fetchall()
+
+
+def record_identity(record: dict) -> tuple:
+    server_id = record.get("server_id")
+    if server_id not in (None, "", 0, "0"):
+        return ("server", server_id)
+    return (
+        "fallback",
+        record.get("target_id"),
+        record.get("local_id"),
+        record.get("create_time"),
+        record.get("local_type"),
+        record.get("sender_id"),
+        record.get("decoded_text"),
+    )
+
+
+def dedupe_records(records: List[dict]) -> List[dict]:
+    deduped = {}
+    for record in records:
+        deduped[record_identity(record)] = record
+    return list(deduped.values())
+
+
+def build_shard_state(records: List[dict]) -> dict:
+    shards: Dict[str, dict] = {}
+    for record in records:
+        source_db = record.get("source_db")
+        source_table = record.get("source_table")
+        if not source_db or not source_table:
+            continue
+        shard_state = shards.setdefault(source_db, {}).setdefault(source_table, {})
+        local_id = record.get("local_id") or 0
+        create_time = record.get("create_time") or 0
+        if local_id > shard_state.get("last_local_id", 0):
+            shard_state["last_local_id"] = local_id
+        if create_time > shard_state.get("last_create_time", 0):
+            shard_state["last_create_time"] = create_time
+    return shards
+
+
 def export_chat(
     db_path: Path,
     contact_db: Optional[Path],
@@ -387,21 +539,18 @@ def export_chat(
     incremental: bool = False,
     preserve_raw: bool = False,
     include_id_in_slug: bool = False,
+    message_dbs: Optional[Sequence[Path]] = None,
 ) -> dict:
-    wx_root = wechat_root.expanduser() if wechat_root else autodetect_wechat_root(db_path)
-
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.text_factory = bytes
+    db_paths = normalize_message_dbs(db_path, message_dbs=message_dbs)
+    wx_root = wechat_root.expanduser() if wechat_root else autodetect_wechat_root(db_paths[0])
+    connections = open_message_connections(db_paths)
+    if not connections:
+        raise FileNotFoundError("No readable message databases found")
 
     contacts = load_contacts(contact_db)
-    resolved_target_id, resolved_target_name = resolve_target(conn, contacts, target, target_name)
+    resolved_target_id, resolved_target_name = resolve_target_across(connections, contacts, target, target_name)
     target_hash = hashlib.md5(resolved_target_id.encode()).hexdigest()
     table_name = f"Msg_{target_hash}"
-
-    sender_lookup = {}
-    for row in conn.execute("SELECT rowid, user_name FROM Name2Id"):
-        sender_lookup[row["rowid"]] = decode_text_value(row["user_name"])
 
     target_slug = slugify(f"{resolved_target_name}-{resolved_target_id}" if include_id_in_slug else resolved_target_name)
     export_root = unique_export_root(output_root, target_slug, resolved_target_id, force_slug_id=False)
@@ -410,28 +559,24 @@ def export_chat(
     export_root.mkdir(parents=True, exist_ok=True)
 
     state = load_state(export_root)
-    last_local_id = state.get("last_local_id") if incremental else None
+    shard_state = state.get("shards", {}) if incremental else {}
+    migrate_to_shard_state = bool(incremental and state and not shard_state)
     if incremental:
-        state["attachment_months"] = normalize_attachment_index(state.get("attachment_months", {}), Path(__file__).resolve().parent.parent)
+        state["attachment_months"] = normalize_attachment_index(state.get("attachment_months", {}), Path(__file__).resolve().parent.parent.parent)
 
-    query = (
-        f"SELECT local_id, server_id, local_type, create_time, real_sender_id, status, source, CAST(message_content AS BLOB) AS message_content "
-        f"FROM {table_name} "
-    )
-    params = []
-    if last_local_id is not None:
-        query += "WHERE local_id > ? "
-        params.append(last_local_id)
-    query += "ORDER BY create_time ASC, local_id ASC"
-
-    table_exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,),
-    ).fetchone()
-    if table_exists:
-        rows = conn.execute(query, params).fetchall()
-    else:
-        rows = []
+    rows_with_context = []
+    source_tables = []
+    for source_key, _, conn in connections:
+        if not table_exists(conn, table_name):
+            continue
+        source_tables.append(source_key)
+        last_local_id = None
+        if incremental and not migrate_to_shard_state:
+            last_local_id = shard_state.get(source_key, {}).get(table_name, {}).get("last_local_id")
+        sender_lookup = load_sender_lookup(conn)
+        for row in query_message_rows(conn, table_name, last_local_id):
+            rows_with_context.append((source_key, sender_lookup, row))
+    rows_with_context.sort(key=lambda item: (item[2]["create_time"] or 0, item[2]["local_id"] or 0, item[0]))
 
     vault_root = None
     if vault:
@@ -449,7 +594,7 @@ def export_chat(
     all_records = existing_records[:]
     touched_days = set()
 
-    for row in rows:
+    for source_key, sender_lookup, row in rows_with_context:
         timestamp = dt.datetime.fromtimestamp(row["create_time"]) if row["create_time"] else None
         sender_id = sender_lookup.get(row["real_sender_id"], "")
         sender_name_value = display_name(sender_id, contacts) if sender_id else resolved_target_name
@@ -498,6 +643,8 @@ def export_chat(
             "formatted_markdown": formatted,
             "attachment_dir": attachment_info["dir"],
             "image_attachments": image_attachments,
+            "source_db": source_key,
+            "source_table": table_name,
         }
         if preserve_raw:
             record["raw_source_b64"] = base64.b64encode(row["source"] or b"").decode("ascii")
@@ -506,7 +653,11 @@ def export_chat(
         if timestamp:
             touched_days.add(timestamp.strftime("%Y-%m-%d"))
 
-    conn.close()
+    for _, _, conn in connections:
+        conn.close()
+
+    all_records = dedupe_records(all_records)
+    all_records.sort(key=lambda record: (record.get("create_time") or 0, record.get("local_id") or 0, record.get("source_db") or ""))
 
     with messages_path.open("w", encoding="utf-8") as handle:
         for record in all_records:
@@ -535,9 +686,10 @@ def export_chat(
             if src_attachments.exists():
                 shutil.copytree(src_attachments, vault_month_dir / "attachments", dirs_exist_ok=True)
 
-    latest_local_id = max((record.get("local_id") or 0) for record in all_records) if all_records else last_local_id
+    latest_local_id = max((record.get("local_id") or 0) for record in all_records) if all_records else state.get("last_local_id")
     latest_create_time = max((record.get("create_time") or 0) for record in all_records) if all_records else state.get("last_create_time")
     target_type = "filehelper" if resolved_target_id == "filehelper" else ("group" if resolved_target_id.endswith("@chatroom") else "contact")
+    new_shard_state = build_shard_state(all_records)
 
     manifest = {
         "target_id": resolved_target_id,
@@ -552,7 +704,9 @@ def export_chat(
         "vault_root": str(vault_root) if vault_root else None,
         "preserve_raw": preserve_raw,
         "source_table": table_name,
-        "source_table_found": bool(table_exists),
+        "source_table_found": bool(source_tables),
+        "source_tables": source_tables,
+        "source_db_count": len(db_paths),
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -567,6 +721,7 @@ def export_chat(
             "last_export_mode": "incremental" if incremental else "full",
             "attachment_months": attachment_index,
             "preserve_raw": preserve_raw,
+            "shards": new_shard_state,
         }
     )
     save_state(export_root, state)
@@ -576,6 +731,7 @@ def export_chat(
 def main():
     parser = argparse.ArgumentParser(description="Export a WeChat chat with raw preservation")
     parser.add_argument("--db", required=True, help="Decrypted message_0.db path")
+    parser.add_argument("--db-extra", action="append", dest="db_extra", help="Additional decrypted message shard")
     parser.add_argument("--contact-db", help="Decrypted contact.db path")
     parser.add_argument("--target", help="Conversation target: filehelper or raw wxid/chatroom id")
     parser.add_argument("--target-name", help="Readable target name to resolve via contact.db")
@@ -592,6 +748,7 @@ def main():
     db_path = Path(args.db).expanduser()
     if not db_path.exists():
         sys.exit(f"[!] DB not found: {db_path}")
+    message_dbs = [db_path] + [Path(path).expanduser() for path in (args.db_extra or [])]
 
     contact_db = Path(args.contact_db).expanduser() if args.contact_db else None
     output_root = Path(args.output_dir).expanduser()
@@ -612,6 +769,7 @@ def main():
             incremental=args.incremental,
             preserve_raw=args.preserve_raw,
             include_id_in_slug=args.include_id_in_slug,
+            message_dbs=message_dbs,
         )
     except Exception as exc:
         sys.exit(f"[!] {exc}")

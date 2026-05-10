@@ -32,8 +32,8 @@ def build_bundle(export_dir: Path) -> None:
     analysis_input_path.write_text(build_analysis_input(manifest, stats), encoding="utf-8")
 
 
-def choose_targets(message_db: Path, contact_db: Path, target_types: List[str], names: List[str], everything: bool) -> List[dict]:
-    targets = list_targets(message_db, contact_db)
+def choose_targets(message_dbs: List[Path], contact_db: Path, target_types: List[str], names: List[str], everything: bool) -> List[dict]:
+    targets = list_targets(message_dbs[0], contact_db, message_dbs=message_dbs)
     type_matched = []
     for target in targets:
         type_selected = everything or not target_types or target["target_type"] in target_types
@@ -51,6 +51,7 @@ def choose_targets(message_db: Path, contact_db: Path, target_types: List[str], 
 def main():
     parser = argparse.ArgumentParser(description="Batch export selected WeChat targets")
     parser.add_argument("--message-db")
+    parser.add_argument("--message-db-extra", action="append", dest="message_db_extra")
     parser.add_argument("--contact-db")
     parser.add_argument("--sync-manifest")
     parser.add_argument("--account-id")
@@ -72,15 +73,19 @@ def main():
 
     if args.sync_manifest:
         runtime = resolve_runtime(Path(args.sync_manifest).expanduser(), account_id=args.account_id, first_ok=args.first_ok)
-        message_db = Path(runtime["message_db"]).expanduser()
+        message_dbs = [Path(path).expanduser() for path in runtime.get("message_dbs", [])]
+        if not message_dbs and runtime.get("message_db"):
+            message_dbs = [Path(runtime["message_db"]).expanduser()]
         contact_db = Path(runtime["contact_db"]).expanduser() if runtime.get("contact_db") else None
         wechat_root = Path(runtime["wechat_root"]).expanduser()
     else:
         if not args.message_db:
             sys.exit("[!] Provide --message-db or --sync-manifest")
-        message_db = Path(args.message_db).expanduser()
+        message_dbs = [Path(args.message_db).expanduser()] + [Path(path).expanduser() for path in (args.message_db_extra or [])]
         contact_db = Path(args.contact_db).expanduser() if args.contact_db else None
         wechat_root = Path(args.wechat_root).expanduser() if args.wechat_root else None
+    if not message_dbs:
+        sys.exit("[!] No message database found for selected account")
 
     output_root = Path(args.output_dir).expanduser()
     vault = Path(args.vault).expanduser() if args.vault else None
@@ -94,7 +99,7 @@ def main():
         target_types.append("filehelper")
 
     targets = choose_targets(
-        message_db=message_db,
+        message_dbs=message_dbs,
         contact_db=contact_db,
         target_types=target_types,
         names=args.names or [],
@@ -108,7 +113,7 @@ def main():
     results = []
     for target in targets:
         manifest = export_chat(
-            db_path=message_db,
+            db_path=message_dbs[0],
             contact_db=contact_db,
             target=target["target_id"],
             target_name=None,
@@ -120,6 +125,7 @@ def main():
             incremental=args.incremental,
             preserve_raw=args.preserve_raw,
             include_id_in_slug=args.include_id_in_slug,
+            message_dbs=message_dbs,
         )
         build_bundle(Path(manifest["output_root"]))
         results.append(manifest)

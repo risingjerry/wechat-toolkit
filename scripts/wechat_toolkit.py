@@ -12,6 +12,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -51,8 +52,15 @@ THEME_ICONS = {
 }
 
 
+def redact_cli_value(value: object) -> str:
+    text = str(value)
+    text = re.sub(r"wxid_[A-Za-z0-9_\\-]+", "[WXID_REDACTED]", text)
+    text = re.sub(r"\b[A-Fa-f0-9]{32,}\b", "[TOKEN_REDACTED]", text)
+    return text
+
+
 def run_command(args: List[str], cwd: Path | None = None) -> None:
-    print("+ " + " ".join(str(arg) for arg in args), flush=True)
+    print("+ " + " ".join(redact_cli_value(arg) for arg in args), flush=True)
     env = os.environ.copy()
     if args and str(args[0]) == "uv":
         env.setdefault("UV_CACHE_DIR", "/private/tmp/wechat-toolkit-uv-cache")
@@ -85,6 +93,41 @@ def project_scripts(project: Path) -> Path:
             "Run: wechat_toolkit.py chat init"
         )
     return scripts
+
+
+def load_sync_manifest(project: Path) -> dict:
+    manifest_path = resolve_chat_project(project) / "decrypted" / "sync_manifest.json"
+    if not manifest_path.exists():
+        raise SystemExit(f"sync manifest not found: {manifest_path}. Run update-backup first.")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def account_has_messages(account: dict) -> bool:
+    if account.get("message", {}).get("status") in {"ok", "plain"}:
+        return True
+    return any(
+        database.get("category") == "message_shard" and database.get("status") in {"ok", "plain"}
+        for database in account.get("databases", [])
+    )
+
+
+def select_synced_account(project: Path, account_id: str | None = None) -> dict:
+    manifest = load_sync_manifest(project)
+    accounts = [account for account in manifest.get("accounts", []) if account_has_messages(account)]
+    if account_id:
+        for account in accounts:
+            if account.get("account_key") == account_id or account.get("account_id") == account_id:
+                return account
+        raise SystemExit("requested account was not found in sync manifest")
+    if not accounts:
+        raise SystemExit("no synced account with message shards found; run update-backup first")
+    return accounts[0]
+
+
+def account_output_root(project: Path, account: dict) -> Path:
+    account_key = account.get("account_key") or account.get("account_id") or "unknown-account"
+    safe_account_key = account_key.replace(":", "__").replace("/", "_")
+    return resolve_chat_project(project) / "output" / "_accounts" / safe_account_key
 
 
 def first_connect_app(args: argparse.Namespace) -> Path:
@@ -231,19 +274,20 @@ def chat_update_backup(args: argparse.Namespace) -> None:
 def chat_export(args: argparse.Namespace) -> None:
     project = resolve_chat_project(args.project)
     scripts = project_scripts(project)
+    account = select_synced_account(project, args.account_id)
+    output_root = account_output_root(project, account)
+    output_root.mkdir(parents=True, exist_ok=True)
     command = python_runner(["zstandard"]) + [
         scripts / "export_targets.py",
         "--sync-manifest",
         project / "decrypted" / "sync_manifest.json",
+        "--account-id",
+        account.get("account_key") or account.get("account_id"),
         "--output-dir",
-        project / "output",
+        output_root,
         "--name",
         args.target_name,
     ]
-    if args.account_id:
-        command.extend(["--account-id", args.account_id])
-    else:
-        command.append("--first-ok")
     if args.target_type == "group":
         command.append("--groups")
     elif args.target_type == "filehelper":
@@ -254,6 +298,34 @@ def chat_export(args: argparse.Namespace) -> None:
         command.append("--incremental")
     if args.no_attachments:
         command.append("--no-attachments")
+    run_command(command, cwd=project)
+
+
+def chat_radar(args: argparse.Namespace) -> None:
+    project = resolve_chat_project(args.project)
+    scripts = project_scripts(project)
+    command = python_runner() + [
+        scripts / "opportunity_radar.py",
+        "--output-root",
+        project / "output",
+    ]
+    if args.date:
+        command.extend(["--date", args.date])
+    run_command(command, cwd=project)
+
+
+def chat_health(args: argparse.Namespace) -> None:
+    project = resolve_chat_project(args.project)
+    scripts = project_scripts(project)
+    command = python_runner() + [
+        scripts / "daily_sync_health.py",
+        "--sync-manifest",
+        project / "decrypted" / "sync_manifest.json",
+        "--output-root",
+        project / "output",
+    ]
+    if args.date:
+        command.extend(["--date", args.date])
     run_command(command, cwd=project)
 
 
@@ -445,6 +517,14 @@ def build_parser() -> argparse.ArgumentParser:
     ai = chat_sub.add_parser("ai")
     ai.add_argument("--export-dir", required=True)
     ai.set_defaults(func=chat_ai)
+
+    radar = chat_sub.add_parser("radar")
+    radar.add_argument("--date")
+    radar.set_defaults(func=chat_radar)
+
+    health = chat_sub.add_parser("health")
+    health.add_argument("--date")
+    health.set_defaults(func=chat_health)
 
     multiopen = subparsers.add_parser("multiopen", help="WeChat one-click multi-open")
     multi_sub = multiopen.add_subparsers(dest="action", required=True)

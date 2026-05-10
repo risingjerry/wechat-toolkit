@@ -1,6 +1,6 @@
 ---
 name: wechat-toolkit
-description: Use when the user wants the productized local WeChat toolkit: export/analyze WeChat chats or manage one-click WeChat multi-open on macOS.
+description: "Use when the user wants the productized local WeChat toolkit: export/analyze WeChat chats or manage one-click WeChat multi-open on macOS."
 ---
 
 # 微信工具箱

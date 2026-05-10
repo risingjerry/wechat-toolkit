@@ -53,7 +53,7 @@ python3 ~/.codex/marketplaces/wechat-local-toolkit/plugins/wechat-toolkit/script
 
 ## 功能 1：微信聊天导出与分析
 
-这个功能会在本地创建一个 `wechat-chat-analysis/` 工作区，用来保存解密后的数据库副本、导出的 Markdown/JSONL、统计文件和 AI 分析输入文件。
+这个功能会在本地创建一个 `wechat-chat-analysis/` 工作区，用来保存解密后的数据库副本、账号隔离导出的 Markdown/JSONL、统计文件、AI 分析输入文件、商机雷达和同步健康摘要。
 
 ### 第一次使用
 
@@ -76,6 +76,8 @@ $wechat-toolkit 更新一下 WeChat 2 的备份数据库
 ```
 
 之后再次导出聊天时，默认会使用最新同步的本地数据库副本。
+
+工具会保留 WeChat 4.x 的多数据库结构，自动读取每个账号的 `message_*.db` 分片，并把不同账号导出到不同目录，避免 `文件传输助手`、`微信团队` 等同名会话互相覆盖。
 
 ### 导出联系人聊天
 
@@ -110,7 +112,7 @@ $wechat-toolkit 重新生成「开心一家人」的 AI 分析文件
 导出结果通常在：
 
 ```text
-wechat-chat-analysis/output/
+wechat-chat-analysis/output/_accounts/<container>__<account_id>/
 ```
 
 每个聊天目录里会包含：
@@ -121,6 +123,18 @@ wechat-chat-analysis/output/
 - `manifest.json`
 - `markdown/`
 - `ai/`
+
+### 查询和健康摘要
+
+```text
+$wechat-toolkit 生成今天的微信商机雷达
+```
+
+```text
+$wechat-toolkit 生成微信同步健康摘要
+```
+
+健康摘要默认只包含账号安全标签、同步状态、消息分片数、WAL 状态、导出会话数、导出消息数和失败原因，不包含 key、decrypted 数据库路径、私密账号 ID 或完整聊天记录。
 
 ## 功能 2：微信一键多开
 

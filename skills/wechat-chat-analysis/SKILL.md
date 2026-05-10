@@ -1,9 +1,9 @@
 ---
 name: wechat-chat-analysis
-description: "This skill should be used when the user wants a local macOS WeChat chat export workflow: initialize a self-contained project, check dependencies, capture WeChat SQLCipher keys with Frida in spawn mode, decrypt local WeChat databases, shortlist contacts/groups/filehelper, export Markdown/JSONL/media locally, and generate AI-ready analysis files."
+description: "This skill should be used when the user wants a local macOS WeChat chat export workflow: initialize a self-contained project, check dependencies, capture WeChat SQLCipher keys with Frida in spawn mode only for first connection, sync multi-account/multi-shard databases from the local key store, export account-scoped Markdown/JSONL/media locally, query chats/favorites/local Moments, and generate AI-ready analysis, radar, and health reports."
 license: Proprietary
 metadata:
-  version: 0.5.1
+  version: 0.6.0
   compatibility: "macOS with WeChat Desktop app, Python 3.9+, Frida, pycryptodome, zstandard, and a local project workspace initialized from this skill."
   created: 2026-04-21
   tags: [wechat, export, markdown, obsidian, ai, local, shortlist, shared]
@@ -27,7 +27,9 @@ Read `references/privacy-and-consent.md` before helping a user export chats.
 - 以后免登录更新/备份本地解密数据库
 - 导出联系人、群聊、文件传输助手的聊天记录
 - 增量导出新增聊天
+- 查询会话、历史、搜索、新消息、收藏、本地朋友圈缓存和账号级 enrichment 摘要
 - 生成中文 AI 分析输入和 `ai/` 分析文件
+- 生成账号隔离的商机雷达和每日同步健康摘要
 
 学员可以直接这样说：
 
@@ -81,7 +83,8 @@ Agent：自动使用已保存的 key_store.json 免登录同步数据库，生�
 - Decrypted DBs: `wechat-chat-analysis/decrypted/`
 - Current decrypted DBs: `wechat-chat-analysis/decrypted/current/`
 - Timestamped DB snapshots: `wechat-chat-analysis/decrypted/snapshots/<YYYY-MM-DD_HHMMSS>/`
-- Exported chats: `wechat-chat-analysis/output/`
+- Exported chats: `wechat-chat-analysis/output/_accounts/<container>__<account_id>/`
+- Reports: `wechat-chat-analysis/output/_reports/`
 - Scripts: `wechat-chat-analysis/scripts/`
 - Temporary key log: `wechat-chat-analysis/decrypted/wechat_keys.log`
 - Persistent key store: `wechat-chat-analysis/decrypted/key_store.json`
@@ -142,7 +145,7 @@ The wizard will:
 4. sync/decrypt local message and contact DB copies into timestamped snapshots and `decrypted/current/`
 5. delete temporary `decrypted/wechat_keys.log` after sync
 6. let the user choose account, target class, shortlist keywords, and target names
-7. export Markdown/JSONL locally under `output/<target-name>/`
+7. export Markdown/JSONL locally under `output/_accounts/<container>__<account_id>/<target-name>/`
 8. build `analysis_input.md` and `stats.json`
 
 Use raw preservation only when needed:
@@ -244,6 +247,7 @@ python3 scripts/sync_databases.py \
 
 Read `decrypted/sync_manifest.json`.
 The manifest points to the latest timestamped snapshot and to `decrypted/current/`. Use `current_output` / `decrypted/current/` for normal exports. Use `decrypted/snapshots/<timestamp>/` when you need to inspect a specific sync time.
+Modern WeChat can spread messages across `message/message_0.db`, `message/message_1.db`, and future shards. Always use all `message_shard` entries from the manifest, and keep favorites, local cached Moments, contacts, sessions, and message resources account-scoped.
 
 If some accounts still fail, report which salts/accounts are blocked and stop there.
 It is normal for one multi-open container to contain multiple account folders where only the opened/logged-in account decrypts.
@@ -257,6 +261,50 @@ Resolve the runtime with:
 ```bash
 python3 scripts/account_runtime.py --manifest decrypted/sync_manifest.json --account-id <account_key>
 ```
+
+### 5. Export with account isolation
+
+Do not export two accounts into the same flat `output/` folder. Use `export_targets.py` with the sync manifest and an account-scoped output root:
+
+```bash
+python3 scripts/export_targets.py \
+  --sync-manifest decrypted/sync_manifest.json \
+  --account-id <account_key> \
+  --output-dir output/_accounts/<container>__<account_id> \
+  --name "张三" \
+  --incremental \
+  --no-attachments
+```
+
+For natural-language `$wechat-toolkit chat export`, the wrapper resolves the selected account and writes to `_accounts/<container>__<account_id>/` automatically.
+
+### 6. Query, radar, and health summaries
+
+Use concise account-scoped queries by default:
+
+```bash
+python3 scripts/query_account.py --all-accounts --json sessions
+python3 scripts/query_account.py --all-accounts --json search "关键词"
+python3 scripts/query_account.py --all-accounts --json favorites -n 10
+python3 scripts/query_account.py --all-accounts --json sns-feed -n 10
+python3 scripts/query_account.py --all-accounts --json enrichment-summary
+```
+
+Generate opportunity reports directly from account-scoped exports:
+
+```bash
+python3 scripts/opportunity_radar.py --output-root output
+```
+
+Generate a privacy-safe daily sync/export health summary:
+
+```bash
+python3 scripts/daily_sync_health.py \
+  --sync-manifest decrypted/sync_manifest.json \
+  --output-root output
+```
+
+Health summaries include safe account labels, sync status, message shard counts, WAL status counts, exported conversation/message counts, and failure reasons. They must not include keys, decrypted database paths, private account identifiers, raw XML, or full chat logs.
 
 ### 5. Ask export choices with shortlist + refine
 

@@ -11,12 +11,35 @@ def load_sync_manifest(path: Path) -> dict:
 
 def account_to_runtime(account: dict) -> dict:
     account_root = Path(account["account_root"])
+
+    def database_output(category: str) -> Optional[str]:
+        for database in account.get("databases", []):
+            if (
+                database.get("category") == category
+                and database.get("status") in {"ok", "plain"}
+                and (database.get("current_output") or database.get("output"))
+            ):
+                return database.get("current_output") or database.get("output")
+        return None
+
+    message_dbs = [
+        database.get("current_output") or database.get("output")
+        for database in account.get("databases", [])
+        if database.get("category") == "message_shard"
+        and database.get("status") in {"ok", "plain"}
+        and (database.get("current_output") or database.get("output"))
+    ]
+    if not message_dbs and (account.get("message", {}).get("current_output") or account.get("message", {}).get("output")):
+        message_dbs = [account.get("message", {}).get("current_output") or account.get("message", {}).get("output")]
     return {
         "account_key": account.get("account_key", account["account_id"]),
         "account_id": account["account_id"],
         "container_name": account.get("container_name") or (account.get("account_key", "").split(":", 1)[0] if ":" in account.get("account_key", "") else ""),
-        "message_db": account.get("message", {}).get("current_output") or account.get("message", {}).get("output"),
+        "message_db": message_dbs[0] if message_dbs else None,
+        "message_dbs": message_dbs,
         "contact_db": account.get("contact", {}).get("current_output") or account.get("contact", {}).get("output"),
+        "favorite_db": database_output("favorite"),
+        "sns_db": database_output("sns"),
         "wechat_root": str(account_root),
     }
 

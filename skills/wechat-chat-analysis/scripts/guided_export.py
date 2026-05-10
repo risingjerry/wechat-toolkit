@@ -231,11 +231,21 @@ def choose_targets_interactively(all_targets: List[dict], target_types: List[str
         print("没有有效选择。")
 
 
+def account_output_root(runtime: dict) -> Path:
+    account_key = runtime.get("account_key") or runtime.get("account_id") or "unknown-account"
+    safe_account_key = account_key.replace(":", "__").replace("/", "_")
+    return OUTPUT_ROOT / "_accounts" / safe_account_key
+
+
 def export_selected(runtime: dict, selected: List[dict], incremental: bool, no_attachments: bool, preserve_raw: bool) -> List[dict]:
     results = []
     message_db = Path(runtime["message_db"]).expanduser()
     contact_db = Path(runtime["contact_db"]).expanduser() if runtime.get("contact_db") else None
     wechat_root = Path(runtime["wechat_root"]).expanduser()
+    output_root = account_output_root(runtime)
+    output_root.mkdir(parents=True, exist_ok=True)
+    print("")
+    print(f"账号隔离导出目录：{output_root}")
     for target in selected:
         print("")
         print(f"正在导出：{target['target_name']} ({target['target_id']})")
@@ -244,7 +254,7 @@ def export_selected(runtime: dict, selected: List[dict], incremental: bool, no_a
             contact_db=contact_db,
             target=target["target_id"],
             target_name=None,
-            output_root=OUTPUT_ROOT,
+            output_root=output_root,
             vault=None,
             folder="WeChat",
             wechat_root=wechat_root,
