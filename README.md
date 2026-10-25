@@ -12,7 +12,7 @@
 在 macOS 终端运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JNHFlow21/wechat-toolkit/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/risingjerry/wechat-toolkit/main/install.sh | bash
 ```
 
 安装完成后，重启 Codex，然后输入：
@@ -78,7 +78,7 @@ python3 ~/.codex/marketplaces/wechat-local-toolkit/plugins/wechat-toolkit/script
 查看更新内容：
 
 - [CHANGELOG.md](CHANGELOG.md)
-- [GitHub Releases](https://github.com/JNHFlow21/wechat-toolkit/releases)
+- [GitHub Releases](https://github.com/risingjerry/wechat-toolkit/releases)
 
 发布规则：
 

@@ -5,10 +5,10 @@
   "author": {
     "name": "dontbesilent",
     "email": "",
-    "url": "https://github.com/JNHFlow21"
+    "url": "https://github.com/risingjerry"
   },
-  "homepage": "https://github.com/JNHFlow21/wechat-toolkit",
-  "repository": "https://github.com/JNHFlow21/wechat-toolkit",
+  "homepage": "https://github.com/risingjerry/wechat-toolkit",
+  "repository": "https://github.com/risingjerry/wechat-toolkit",
   "license": "Proprietary",
   "keywords": [
     "wechat",
@@ -28,7 +28,7 @@
       "WeChat Chat Export",
       "WeChat Multi-open"
     ],
-    "websiteURL": "https://github.com/JNHFlow21/wechat-toolkit",
+    "websiteURL": "https://github.com/risingjerry/wechat-toolkit",
     "privacyPolicyURL": "",
     "termsOfServiceURL": "",
     "defaultPrompt": [

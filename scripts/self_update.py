@@ -16,7 +16,7 @@ from pathlib import Path
 
 DEFAULT_MARKETPLACE_NAME = "wechat-local-toolkit"
 DEFAULT_PLUGIN_NAME = "wechat-toolkit"
-DEFAULT_REPO_URL = "https://github.com/JNHFlow21/wechat-toolkit.git"
+DEFAULT_REPO_URL = "https://github.com/risingjerry/wechat-toolkit.git"
 DEFAULT_BRANCH = "main"
 INSTALL_STATE = ".wechat-toolkit-install.json"
 LAUNCH_AGENT_LABEL = "com.dontbesilent.wechat-toolkit-updater"

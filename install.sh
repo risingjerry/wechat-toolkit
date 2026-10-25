@@ -3,7 +3,7 @@ set -euo pipefail
 
 MARKETPLACE_NAME="${WECHAT_TOOLKIT_MARKETPLACE_NAME:-wechat-local-toolkit}"
 PLUGIN_NAME="${WECHAT_TOOLKIT_PLUGIN_NAME:-wechat-toolkit}"
-REPO_URL="${WECHAT_TOOLKIT_REPO_URL:-https://github.com/JNHFlow21/wechat-toolkit.git}"
+REPO_URL="${WECHAT_TOOLKIT_REPO_URL:-https://github.com/risingjerry/wechat-toolkit.git}"
 BRANCH="${WECHAT_TOOLKIT_BRANCH:-main}"
 PLUGIN_SUBDIR="${WECHAT_TOOLKIT_PLUGIN_SUBDIR:-.}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
